@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "global_protection_enabled": true,
+    "hotkey": "ctrl+shift+alt+l",
+    "protection_toggle_hotkey": "ctrl+shift+alt+p",
+    "pin_enabled": false,
+    "pin_hash": "",
+    "autostart": true,
+    "clean_recent": true,
+    "check_interval_ms": 35,
+    "stealth_startup": false,
+    "show_tray_icon": true
+  },
+  "rules": []
+}
