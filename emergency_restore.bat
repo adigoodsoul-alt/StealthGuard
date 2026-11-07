@@ -27,7 +27,12 @@ if not "%TARGET_PATH%"=="" (
     echo Снятие атрибутов System и Hidden с %TARGET_PATH%...
     attrib -s -h "%TARGET_PATH%" >nul 2>nul
     attrib -s -h "%TARGET_PATH%\*" /s /d >nul 2>nul
-    echo [OK] Атрибуты видимости файлов и папок восстановлены.
+    
+    :: Возврат системных атрибутов служебным файлам Windows
+    for /r "%TARGET_PATH%" %%F in (desktop.ini thumbs.db) do (
+        if exist "%%F" attrib +s +h "%%F" >nul 2>nul
+    )
+    echo [OK] Атрибуты видимости файлов и папок восстановлены (системные файлы снова скрыты).
 )
 
 echo.
