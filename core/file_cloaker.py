@@ -1,9 +1,11 @@
 import os
+import sys
+import json
 import threading
 import ctypes
 from ctypes import wintypes
 import winreg
-from typing import Set, Optional
+from typing import Set, Dict, Optional
 
 kernel32 = ctypes.windll.kernel32
 shell32 = ctypes.windll.shell32
@@ -11,6 +13,80 @@ user32 = ctypes.windll.user32
 
 _PROTECTED_NAMES_LOCK = threading.Lock()
 PROTECTED_ITEM_NAMES: Set[str] = set()
+
+_CACHE_LOCK = threading.Lock()
+_ORIGINAL_ATTRIBUTES: Dict[str, int] = {}
+_CLOAKED_FOLDERS: Set[str] = set()
+
+
+def _get_system_cache_path() -> str:
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_dir, "system_attributes_cache.json")
+
+
+def _load_system_attributes_cache():
+    global _ORIGINAL_ATTRIBUTES, _CLOAKED_FOLDERS
+    cache_path = _get_system_cache_path()
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            with _CACHE_LOCK:
+                _ORIGINAL_ATTRIBUTES = {
+                    os.path.normcase(k): int(v)
+                    for k, v in data.get("attributes", {}).items()
+                }
+                _CLOAKED_FOLDERS = {
+                    os.path.normcase(p)
+                    for p in data.get("cloaked_folders", [])
+                }
+        except Exception:
+            pass
+
+
+def _save_system_attributes_cache():
+    cache_path = _get_system_cache_path()
+    try:
+        with _CACHE_LOCK:
+            data = {
+                "attributes": dict(_ORIGINAL_ATTRIBUTES),
+                "cloaked_folders": list(_CLOAKED_FOLDERS)
+            }
+        temp_path = cache_path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        if os.path.exists(cache_path):
+            os.replace(temp_path, cache_path)
+        else:
+            os.rename(temp_path, cache_path)
+    except Exception:
+        pass
+
+
+def get_recorded_original_attributes() -> Dict[str, int]:
+    """Возвращает копию словаря оригинальных системных/скрытых атрибутов файлов."""
+    with _CACHE_LOCK:
+        return dict(_ORIGINAL_ATTRIBUTES)
+
+
+def clear_system_attributes_cache():
+    """Очищает кэш оригинальных атрибутов и удаляет файл кэша."""
+    global _ORIGINAL_ATTRIBUTES, _CLOAKED_FOLDERS
+    with _CACHE_LOCK:
+        _ORIGINAL_ATTRIBUTES.clear()
+        _CLOAKED_FOLDERS.clear()
+    cache_path = _get_system_cache_path()
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+        except Exception:
+            pass
+
+
+_load_system_attributes_cache()
 
 
 def get_protected_item_names() -> Set[str]:
@@ -174,8 +250,8 @@ def cloak_file(file_path: str) -> bool:
 
 def uncloak_file(file_path: str) -> bool:
     """
-    Восстанавливает видимость файла, снимая атрибуты System и Hidden
-    (игнорирует настоящие системные файлы Windows вроде desktop.ini).
+    Восстанавливает видимость файла, не снимая оригинальные системные и скрытые атрибуты,
+    если файл изначально был системным или скрытым до наложения защиты.
     """
     try:
         if is_protected_system_item(os.path.basename(file_path)):
@@ -185,11 +261,15 @@ def uncloak_file(file_path: str) -> bool:
         if attrs == INVALID_FILE_ATTRIBUTES:
             return False
 
+        norm_p = os.path.normcase(os.path.normpath(file_path))
+        with _CACHE_LOCK:
+            orig_flags = _ORIGINAL_ATTRIBUTES.get(norm_p, 0)
+
         remove_flags = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
-        if not (attrs & remove_flags):
+        new_attrs = (attrs & ~remove_flags) | orig_flags
+        if new_attrs == attrs:
             return True
 
-        new_attrs = attrs & ~remove_flags
         return bool(kernel32.SetFileAttributesW(file_path, new_attrs))
     except Exception:
         return False
@@ -205,6 +285,7 @@ def cloak_folder(
     """
     Скрывает саму целевую папку (если это не корень диска), а также все файлы и подпапки
     внутри неё на глубину до max_depth=12.
+    Фиксирует исходные системные и скрытые атрибуты файлов для их сохранения при снятии защиты.
     Добавляет имена папки, всех её подпапок и файлов в глобальный кэш PROTECTED_ITEM_NAMES.
     Благодаря скрытию самой корневой папки (System + Hidden + NotContentIndexed)
     поиск Проводника Windows полностью пропускает ветку каталога и не выдаёт файлы внутри.
@@ -219,7 +300,52 @@ def cloak_folder(
     cloaked_count = 0
     base_path = os.path.normpath(folder_path)
     base_depth = base_path.rstrip(os.path.sep).count(os.path.sep)
+    base_norm = os.path.normcase(base_path)
     names_to_add: Set[str] = set()
+
+    with _CACHE_LOCK:
+        was_already_cloaked = base_norm in _CLOAKED_FOLDERS
+
+    # Если папка ещё не находилась в состоянии скрытия, фиксируем исходные атрибуты файлов и подпапок
+    if not was_already_cloaked:
+        try:
+            if not _is_drive_root_path(base_norm):
+                d_attrs = kernel32.GetFileAttributesW(base_norm)
+                if d_attrs != INVALID_FILE_ATTRIBUTES:
+                    orig_d = d_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                    if orig_d:
+                        with _CACHE_LOCK:
+                            _ORIGINAL_ATTRIBUTES[base_norm] = orig_d
+
+            for root, dirs, files in os.walk(base_norm):
+                c_depth = root.rstrip(os.path.sep).count(os.path.sep) - base_depth
+                dirs[:] = [d for d in dirs if not is_protected_system_item(d)]
+                for d in dirs:
+                    sub_d = os.path.normcase(os.path.join(root, d))
+                    sub_attrs = kernel32.GetFileAttributesW(sub_d)
+                    if sub_attrs != INVALID_FILE_ATTRIBUTES:
+                        orig = sub_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                        if orig:
+                            with _CACHE_LOCK:
+                                _ORIGINAL_ATTRIBUTES[sub_d] = orig
+                for f in files:
+                    if is_protected_system_item(f):
+                        continue
+                    full_f = os.path.normcase(os.path.join(root, f))
+                    f_attrs = kernel32.GetFileAttributesW(full_f)
+                    if f_attrs != INVALID_FILE_ATTRIBUTES:
+                        orig = f_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                        if orig:
+                            with _CACHE_LOCK:
+                                _ORIGINAL_ATTRIBUTES[full_f] = orig
+                if not recursive or c_depth >= max_depth:
+                    dirs.clear()
+        except Exception:
+            pass
+
+        with _CACHE_LOCK:
+            _CLOAKED_FOLDERS.add(base_norm)
+        _save_system_attributes_cache()
 
     try:
         folder_base_name = os.path.basename(base_path)
@@ -327,6 +453,11 @@ def uncloak_folder(
             with _PROTECTED_NAMES_LOCK:
                 PROTECTED_ITEM_NAMES.difference_update(names_to_remove)
 
+        base_norm = os.path.normcase(base_path)
+        with _CACHE_LOCK:
+            _CLOAKED_FOLDERS.discard(base_norm)
+        _save_system_attributes_cache()
+
         notify_shell_dir_updated(base_path)
         parent = os.path.dirname(base_path)
         if parent and parent != base_path:
@@ -362,7 +493,9 @@ def cloak_directory(dir_path: str) -> bool:
 
 
 def uncloak_directory(dir_path: str) -> bool:
-    """Снимает System и Hidden с директории."""
+    """
+    Снимает System и Hidden с директории, сохраняя оригинальные системные и скрытые атрибуты.
+    """
     if not dir_path or not os.path.exists(dir_path):
         return False
     try:
@@ -375,11 +508,15 @@ def uncloak_directory(dir_path: str) -> bool:
         if attrs == INVALID_FILE_ATTRIBUTES:
             return False
 
+        norm_p = os.path.normcase(os.path.normpath(dir_path))
+        with _CACHE_LOCK:
+            orig_flags = _ORIGINAL_ATTRIBUTES.get(norm_p, 0)
+
         remove_flags = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
-        if not (attrs & remove_flags):
+        new_attrs = (attrs & ~remove_flags) | orig_flags
+        if new_attrs == attrs:
             return True
 
-        new_attrs = attrs & ~remove_flags
         return bool(kernel32.SetFileAttributesW(dir_path, new_attrs))
     except Exception:
         return False

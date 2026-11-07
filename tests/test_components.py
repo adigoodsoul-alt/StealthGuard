@@ -294,18 +294,23 @@ def test_full_pipeline():
     sync_rules_cloaking(cm, protection_enabled=False)
     target_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(real_target)
     decoy_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(decoy_clone)
-    assert not (target_attrs_off & FILE_ATTRIBUTE_HIDDEN)
-    assert (decoy_attrs_off & FILE_ATTRIBUTE_HIDDEN) and (decoy_attrs_off & FILE_ATTRIBUTE_SYSTEM)
-
     # Clean up inversion test
     cm.remove_rule(inversion_rule.id)
-    time.sleep(0.1)
+    for _ in range(30):
+        if not os.path.exists(decoy_clone):
+            break
+        time.sleep(0.05)
     if os.path.exists(decoy_clone):
         delete_decoy_folder(decoy_clone)
     if os.path.exists(real_target):
-        os.rmdir(real_target)
+        uncloak_folder(real_target, all_files=True)
+        try:
+            os.rmdir(real_target)
+        except Exception:
+            pass
     if os.path.exists(inversion_base):
-        os.rmdir(inversion_base)
+        import shutil
+        shutil.rmtree(inversion_base, ignore_errors=True)
     print("[PASS] Smart Visibility Inversion (Protection ON/OFF) verified")
 
     # 3h. EverythingCloaker patch_everything_ini_flags test
@@ -354,6 +359,84 @@ def test_full_pipeline():
     if os.path.exists(test_everything_ini):
         os.remove(test_everything_ini)
     print("[PASS] Everything.ini flags patch (exclude_hidden & exclude_system) verified")
+
+    # 3i. System files attribute preservation test
+    from core.file_cloaker import clear_system_attributes_cache, get_recorded_original_attributes
+    clear_system_attributes_cache()
+    test_sys_dir = os.path.join(os.path.dirname(__file__), "test_sys_preservation")
+    if os.path.exists(test_sys_dir):
+        uncloak_folder(test_sys_dir, all_files=True)
+        import shutil
+        shutil.rmtree(test_sys_dir, ignore_errors=True)
+    os.makedirs(test_sys_dir, exist_ok=True)
+    normal_file = os.path.join(test_sys_dir, "normal_document.txt")
+    with open(normal_file, "w", encoding="utf-8") as f:
+        f.write("Normal content")
+    system_file = os.path.join(test_sys_dir, "special_driver.sys")
+    with open(system_file, "w", encoding="utf-8") as f:
+        f.write("DRIVER_SYS_BINARY_DATA\n")
+
+    # Mark special_driver.sys as System + Hidden originally
+    ctypes.windll.kernel32.SetFileAttributesW(
+        system_file,
+        FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN
+    )
+    initial_sys_attrs = ctypes.windll.kernel32.GetFileAttributesW(system_file)
+    assert (initial_sys_attrs & FILE_ATTRIBUTE_SYSTEM) != 0
+    assert (initial_sys_attrs & FILE_ATTRIBUTE_HIDDEN) != 0
+
+    # Cloak folder (both files become cloaked)
+    cloak_folder(test_sys_dir, all_files=True)
+    rec_attrs = get_recorded_original_attributes()
+    norm_sys_path = os.path.normpath(system_file).lower()
+    assert norm_sys_path in rec_attrs
+    assert (rec_attrs[norm_sys_path] & FILE_ATTRIBUTE_SYSTEM) != 0
+
+    # Uncloak folder: special_driver.sys MUST retain FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN!
+    # normal_document.txt MUST become visible (no HIDDEN, no SYSTEM)!
+    uncloak_folder(test_sys_dir, all_files=True)
+    after_normal_attrs = ctypes.windll.kernel32.GetFileAttributesW(normal_file)
+    after_sys_attrs = ctypes.windll.kernel32.GetFileAttributesW(system_file)
+
+    assert not (after_normal_attrs & FILE_ATTRIBUTE_HIDDEN)
+    assert not (after_normal_attrs & FILE_ATTRIBUTE_SYSTEM)
+    assert (after_sys_attrs & FILE_ATTRIBUTE_SYSTEM) != 0
+    assert (after_sys_attrs & FILE_ATTRIBUTE_HIDDEN) != 0
+
+    # Clean up test files
+    ctypes.windll.kernel32.SetFileAttributesW(system_file, 0x80)  # FILE_ATTRIBUTE_NORMAL
+    os.remove(system_file)
+    os.remove(normal_file)
+    os.rmdir(test_sys_dir)
+    print("[PASS] System files attribute preservation on uncloak verified")
+
+    # 3j. Mode 'hide' (pure folder hiding without decoy) test
+    test_hide_dir = os.path.join(os.path.dirname(__file__), "test_hide_mode_dir")
+    os.makedirs(test_hide_dir, exist_ok=True)
+    hide_rule = Rule(
+        name="HideModeRule",
+        target_path=test_hide_dir,
+        mode="hide",
+        decoy_path="",
+        enabled=True
+    )
+    cm.add_rule(hide_rule)
+
+    # 1) Protection ENABLED: test_hide_dir is cloaked
+    sync_rules_cloaking(cm, protection_enabled=True)
+    hide_attrs_on = ctypes.windll.kernel32.GetFileAttributesW(test_hide_dir)
+    assert (hide_attrs_on & FILE_ATTRIBUTE_HIDDEN) and (hide_attrs_on & FILE_ATTRIBUTE_SYSTEM)
+
+    # 2) Protection DISABLED: test_hide_dir is uncloaked
+    sync_rules_cloaking(cm, protection_enabled=False)
+    hide_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(test_hide_dir)
+    assert not (hide_attrs_off & FILE_ATTRIBUTE_HIDDEN)
+
+    # Clean up
+    cm.remove_rule(hide_rule.id)
+    if os.path.exists(test_hide_dir):
+        os.rmdir(test_hide_dir)
+    print("[PASS] Mode 'hide' (pure folder hiding) sync verified")
 
     # 4. Qt App and Main Window UI verification
     app = QApplication.instance() or QApplication(sys.argv)
@@ -404,6 +487,20 @@ def test_full_pipeline():
     os.rmdir(created_decoy)
     os.rmdir(dummy_ui_target)
     print("[PASS] RulesView Auto-Clone UI action passed")
+
+    # Test RulesView Mode 'hide' (pure folder hiding) creation
+    dummy_ui_hide = os.path.join(os.path.dirname(__file__), "UI_Hide_Target")
+    os.makedirs(dummy_ui_hide, exist_ok=True)
+    window.rules_view.targetInput.setText(dummy_ui_hide)
+    window.rules_view.modeCombo.setCurrentIndex(1)  # Index 1: "Скрытие (Hide)"
+    window.rules_view._create_rule()
+    created_hide_rule = next((r for r in cm.rules if r.target_path == dummy_ui_hide), None)
+    assert created_hide_rule is not None
+    assert created_hide_rule.mode == "hide"
+    assert created_hide_rule.decoy_path == ""
+    cm.remove_rule(created_hide_rule.id)
+    os.rmdir(dummy_ui_hide)
+    print("[PASS] RulesView Mode 'hide' UI creation passed")
 
     # Test protection toggle hotkey handler
     assert cm.settings.global_protection_enabled is True

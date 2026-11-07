@@ -1,39 +1,21 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
+*.tmp
 
-# C extensions
-*.obj
-*.o
-
-# Distribution / packaging / PyInstaller
-build/
+# PyInstaller / Build outputs
 dist/
+build/
 dist_build/
 *.spec
 
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
+# Test files & temporary caches
+pipeline_test_config.json
+test_Everything.ini
+system_attributes_cache.json
+*.log
 
-# Testing & Coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE & Editor settings
+# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# Operating System Files
-Thumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.bak

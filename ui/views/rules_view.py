@@ -53,9 +53,9 @@ class RuleCard(CardWidget):
         self.targetLabel.setStyleSheet("color: #a0a0a0;")
 
         self.actionLabel = CaptionLabel(self._get_action_desc(), self)
-        self.actionLabel.setStyleSheet("color: #0099ff;" if self.rule.mode == "decoy" else "color: #ff5555;")
+        color = "#0099ff" if self.rule.mode == "decoy" else ("#a066ff" if self.rule.mode == "hide" else "#ff5555")
+        self.actionLabel.setStyleSheet(f"color: {color};")
 
-        info_layout.addLayout(top_info_layout)
         info_layout.addWidget(self.targetLabel)
         info_layout.addWidget(self.actionLabel)
 
@@ -65,15 +65,21 @@ class RuleCard(CardWidget):
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(12)
 
-        self.mediaCheck = CheckBox("Анти-мигание", self)
-        self.mediaCheck.setToolTip("Делает файлы и подпапки системно скрытыми от Проводника — устраняет задержку и мигание при открытии")
+        self.mediaCheck = CheckBox("Скрытие содержимого", self)
+        self.mediaCheck.setToolTip("Делает файлы и подпапки системно скрытыми от Проводника (System + Hidden + NotContentIndexed)")
         self.mediaCheck.setChecked(getattr(self.rule, "cloak_all", True))
         self.mediaCheck.stateChanged.connect(self._on_hide_media_toggled)
         controls_layout.addWidget(self.mediaCheck)
 
         self.modeCombo = ComboBox(self)
-        self.modeCombo.addItems(["Подмена", "Блокировка"])
-        self.modeCombo.setCurrentIndex(0 if self.rule.mode == "decoy" else 1)
+        self.modeCombo.addItems(["Подмена", "Скрытие", "Блокировка"])
+        if self.rule.mode == "decoy":
+            mode_idx = 0
+        elif self.rule.mode == "hide":
+            mode_idx = 1
+        else:
+            mode_idx = 2
+        self.modeCombo.setCurrentIndex(mode_idx)
         self.modeCombo.setFixedWidth(135)
         self.modeCombo.currentIndexChanged.connect(self._on_mode_changed)
         controls_layout.addWidget(self.modeCombo)
@@ -93,14 +99,21 @@ class RuleCard(CardWidget):
         layout.addLayout(controls_layout)
 
     def _update_icon(self):
-        icon = FluentIcon.SYNC if self.rule.mode == "decoy" else FluentIcon.CANCEL
+        if self.rule.mode == "decoy":
+            icon = FluentIcon.SYNC
+        elif self.rule.mode == "hide":
+            icon = FluentIcon.HIDE
+        else:
+            icon = FluentIcon.CANCEL
         self.iconLabel.setPixmap(icon.icon().pixmap(32, 32))
 
     def _get_action_desc(self) -> str:
-        hide_str = " • 🙈 Анти-мигание активно" if getattr(self.rule, "cloak_all", True) else ""
+        hide_str = " • 🔒 Скрытие содержимого" if getattr(self.rule, "cloak_all", True) else ""
         if self.rule.mode == "decoy":
             decoy = self.rule.decoy_path or "Документы (по умолчанию)"
             return f"🔄 Подмена -> {decoy}{hide_str}"
+        elif self.rule.mode == "hide":
+            return f"👻 Скрытие -> Папка полностью скрыта{hide_str}"
         return f"⛔ Блокировка -> Окно ошибки Windows{hide_str}"
 
     def _on_hide_media_toggled(self, state):
@@ -111,10 +124,16 @@ class RuleCard(CardWidget):
         self.rule_changed.emit(self.rule)
 
     def _on_mode_changed(self, index: int):
-        self.rule.mode = "decoy" if index == 0 else "block"
+        if index == 0:
+            self.rule.mode = "decoy"
+        elif index == 1:
+            self.rule.mode = "hide"
+        else:
+            self.rule.mode = "block"
         self._update_icon()
         self.actionLabel.setText(self._get_action_desc())
-        self.actionLabel.setStyleSheet("color: #0099ff;" if self.rule.mode == "decoy" else "color: #ff5555;")
+        color = "#0099ff" if self.rule.mode == "decoy" else ("#a066ff" if self.rule.mode == "hide" else "#ff5555")
+        self.actionLabel.setStyleSheet(f"color: {color};")
         self.rule_changed.emit(self.rule)
 
     def _on_switch_changed(self, checked: bool):
@@ -180,7 +199,7 @@ class RulesView(QWidget):
 
         mode_label = BodyLabel("Режим:", self.addCard)
         self.modeCombo = ComboBox(self.addCard)
-        self.modeCombo.addItems(["Подмена (Decoy)", "Блокировка (Block)"])
+        self.modeCombo.addItems(["Подмена (Decoy)", "Скрытие (Hide)", "Блокировка (Block)"])
         self.modeCombo.setCurrentIndex(0)
         self.modeCombo.currentIndexChanged.connect(self._on_add_mode_changed)
 
@@ -202,10 +221,10 @@ class RulesView(QWidget):
         r2_layout.addWidget(self.autoCloneBtn)
         add_layout.addLayout(r2_layout)
 
-        # Row 2.5: Anti-flicker / Total Cloaking Checkbox
-        self.hideMediaCheck = CheckBox("🔒 Режим анти-мигания (скрывать файлы в папке: System + Hidden)", self.addCard)
+        # Row 2.5: Deep cloaking Checkbox
+        self.hideMediaCheck = CheckBox("🔒 Глубокое скрытие файлов (System + Hidden)", self.addCard)
         self.hideMediaCheck.setChecked(True)
-        self.hideMediaCheck.setToolTip("Делает файлы и подпапки невидимыми для Проводника, полностью устраняя мигание при переходе в приманку")
+        self.hideMediaCheck.setToolTip("Делает файлы и подпапки системно невидимыми для Проводника (System + Hidden + NotContentIndexed)")
         add_layout.addWidget(self.hideMediaCheck)
 
         # Row 3: Name & Add Button
@@ -265,7 +284,9 @@ class RulesView(QWidget):
         self.decoyInput.setEnabled(is_decoy)
         self.browseDecoyBtn.setEnabled(is_decoy)
         self.autoCloneBtn.setEnabled(is_decoy)
-        if not is_decoy:
+        if index == 1:
+            self.decoyInput.setPlaceholderText("Папка будет полностью скрыта, приманка не требуется")
+        elif index == 2:
             self.decoyInput.setPlaceholderText("Для блокировки папка-приманка не требуется")
         else:
             self.decoyInput.setPlaceholderText("Папка-приманка (например: C:\\Users\\User\\Documents)")
@@ -323,9 +344,16 @@ class RulesView(QWidget):
             )
             return
 
-        mode = "decoy" if self.modeCombo.currentIndex() == 0 else "block"
+        mode_idx = self.modeCombo.currentIndex()
+        if mode_idx == 0:
+            mode = "decoy"
+        elif mode_idx == 1:
+            mode = "hide"
+        else:
+            mode = "block"
+
         decoy = self.decoyInput.text().strip()
-        auto_decoy = self._last_auto_decoy
+        auto_decoy = self._last_auto_decoy if mode == "decoy" else False
         if mode == "decoy" and not decoy:
             from core.drive_cloaker import is_drive_root, get_drive_letter, mount_virtual_decoy_drive
             if is_drive_root(target):
@@ -336,6 +364,8 @@ class RulesView(QWidget):
             if not decoy:
                 # Default decoy: User Documents
                 decoy = os.path.join(os.path.expanduser("~"), "Documents")
+        elif mode != "decoy":
+            decoy = ""
 
         name = self.nameInput.text().strip() or os.path.basename(os.path.normpath(target)) or "Защита"
         cloak_all = self.hideMediaCheck.isChecked()
@@ -372,8 +402,10 @@ class RulesView(QWidget):
         self.refresh_rules_list()
 
         msg = f"Правило для «{name}» успешно активировано."
-        if cloak_all:
-            msg += " Включен режим анти-мигания (файлы системно скрыты)."
+        if mode == "hide":
+            msg += " Папка переведена в режим полного скрытия."
+        elif cloak_all:
+            msg += " Включено глубокое скрытие файлов (System + Hidden)."
 
         InfoBar.success(
             title="Правило сохранено",

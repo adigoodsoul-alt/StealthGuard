@@ -296,7 +296,7 @@ class ExplorerInterceptor(QThread):
             }
             self.intercepted.emit(event_data)
 
-        elif rule.mode == "block":
+        elif rule.mode in ("block", "hide"):
             norm_target = os.path.normpath(rule.target_path)
             parent_dir = os.path.dirname(norm_target)
             if not parent_dir or not os.path.exists(parent_dir) or os.path.normcase(parent_dir) == os.path.normcase(norm_target):
@@ -319,17 +319,18 @@ class ExplorerInterceptor(QThread):
             except Exception as e:
                 print(f"[Interceptor] Block navigation failed: {e}")
 
+            mode_name = "Скрытие (Hide)" if rule.mode == "hide" else "Блокировка (Block)"
             event_data = {
                 "timestamp": timestamp_str,
                 "target_path": display_target,
-                "mode": "Блокировка (Block)",
+                "mode": mode_name,
                 "decoy_path": safe_destination,
                 "rule_name": rule.name or os.path.basename(rule.target_path),
                 "hwnd": hwnd
             }
             self.intercepted.emit(event_data)
 
-            if rule.notify_on_block:
+            if rule.mode == "block" and rule.notify_on_block:
                 folder_name = os.path.basename(os.path.normpath(rule.target_path)) or rule.target_path
                 show_native_error_dialog(
                     title="Проводник Windows",

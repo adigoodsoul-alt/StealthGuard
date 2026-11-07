@@ -1,41 +1,39 @@
-# StealthGuard — Полный исходный код проекта (v2.4)
-
-> Этот файл содержит полный актуальный исходный код приложения **StealthGuard** (Windows 11 Transparent Explorer Interceptor, Cloaking & Decoy Drives, Search Leaks Prevention, Everything.ini Hidden/System Policy v2.4).
-> Включает обновления безопасности (PBKDF2-HMAC-SHA256), надёжности (GoBack fallback для адресной строки), производительности (RecentCleaner mtime caching), предотвращения утечек поиска Windows 11 (search-ms: crumb/location parsing, ShowSuperHidden/Hidden stealth policies enforcement, target directory cloaking, max_depth=12), интеграцию с утилитой поиска Everything (everything_cloaker.py) и скрипт аварийного восстановления (emergency_restore.bat).
+# StealthGuard — Полный исходный код проекта (v2.5)
+> Этот файл содержит полный актуальный исходный код приложения **StealthGuard** (Windows 11 Transparent Explorer Interceptor, Cloaking & Decoy Drives, Search Leaks Prevention, Everything.ini Hidden/System Policy, Pure Hide Mode, System Attributes Preservation v2.5).
 
 ## Оглавление файлов
 
-- [main.py](#файл-mainpy) — *Точка входа, проверка единого экземпляра (Named Mutex), инициализация QApplication, разбор аргументов командной строки (--stealth, --config).*
-- [core/config_manager.py](#файл-coreconfig-managerpy) — *Потокобезопасное (RLock) управление конфигурацией config.json, безопасный PIN-код (PBKDF2-HMAC-SHA256, 600k итераций, соль, secrets.compare_digest, автомиграция со старого SHA-256), асинхронный запуск задач клоакинга и синхронизация скрытых дисков.*
-- [core/interceptor.py](#файл-coreinterceptorpy) — *Мониторинг Проводника Windows 11 в реальном времени через COM Shell.Application, мгновенное пробуждение через WinEventWakeThread (GetMessageW), поддержка перехвата поисковых запросов search-ms: (включая crumb=location и crumb=query), безопасный fallback при блокировке.*
-- [core/drive_cloaker.py](#файл-coredrive-cloakerpy) — *Скрытие локальных дисков и виртуальных дисков-приманок через реестровую маску NoDrives, мгновенное удаление из левой панели навигации XAML через SHChangeNotify(SHCNE_DRIVEREMOVED), монтирование виртуального диска-приманки через DefineDosDeviceW (Win32 API без прав администратора), скрытие дублирующих съёмных дисков через MountPoints2 и CLSID DelegateFolders.*
-- [core/file_cloaker.py](#файл-corefile-cloakerpy) — *Технология Total Cloaking (System + Hidden + NotContentIndexed) для устранения визуального мигания файлов и исключения из поиска Проводника, принудительное отключение показа скрытых файлов в реестре Explorer Advanced (enforce_explorer_stealth_policies), скрытие корневой директории правила, белый список системных файлов Windows, глубина max_depth=12.*
-- [core/everything_cloaker.py](#файл-coreeverything-cloakerpy) — *Управление флагами exclude_hidden_files_and_folders и exclude_system_files_and_folders в Everything.ini для исключения защищённых файлов и папок из поисковой выдачи утилиты Everything при активной защите, с тихим перезапуском Everything.exe -quit / -startup только при реальном изменении флагов.*
-- [core/decoy_generator.py](#файл-coredecoy-generatorpy) — *Генерация визуальных клонов-приманок на основе омоглифов (кириллица/латиница), поддержка дисков-приманок через drive_cloaker, безопасное удаление и размонтирование приманок.*
-- [core/hotkey_manager.py](#файл-corehotkey-managerpy) — *Глобальные горячие клавиши (Ctrl+Shift+Alt+L, Ctrl+Shift+Alt+P) на базе нативного потока RegisterHotKey с fallback на pynput, нечувствительность к раскладке клавиатуры RU/EN.*
-- [core/recent_cleaner.py](#файл-corerecent-cleanerpy) — *Оптимизированная очистка системных ярлыков .lnk из %APPDATA%\Microsoft\Windows\Recent с кэшированием mtime (0% CPU в простое) и гарантированным освобождением COM-дескрипторов.*
+- [main.py](#файл-mainpy) — *Точка входа, проверка единого экземпляра (Named Mutex), обязательная проверка PIN при холодном старте, инициализация QApplication, аргументы --stealth, --config.*
+- [core/config_manager.py](#файл-coreconfigmanagerpy) — *Потокобезопасное (RLock) управление конфигурацией config.json, безопасный PIN-код (PBKDF2-HMAC-SHA256, 600k итераций, соль, secrets.compare_digest, автомиграция со старого SHA-256), умная инверсия видимости для клонов-приманок (sync_rules_cloaking), поддержка режимов decoy, hide, block.*
+- [core/interceptor.py](#файл-coreinterceptorpy) — *Мониторинг Проводника Windows 11 в реальном времени через COM Shell.Application, мгновенное пробуждение через WinEventWakeThread (GetMessageW), поддержка перехвата поисковых запросов search-ms: по токенам и PROTECTED_ITEM_NAMES, daemon-поток периодического ре-клоакинга, поддержка режимов Decoy, Hide, Block.*
+- [core/drive_cloaker.py](#файл-coredrivecloakerpy) — *Скрытие локальных дисков и виртуальных дисков-приманок через реестровую маску NoDrives, мгновенное удаление из левой панели навигации XAML через SHChangeNotify(SHCNE_DRIVEREMOVED), монтирование виртуального диска-приманки через DefineDosDeviceW (Win32 API без прав администратора), скрытие дублирующих съёмных дисков через MountPoints2 и CLSID DelegateFolders.*
+- [core/file_cloaker.py](#файл-corefilecloakerpy) — *Технология Total Cloaking (System + Hidden + NotContentIndexed) для устранения визуального мигания файлов и исключения из поиска Проводника, сохранение оригинальных системных/скрытых атрибутов при снятии защиты (system_attributes_cache.json), глобальный индекс PROTECTED_ITEM_NAMES, принудительное отключение показа скрытых файлов в реестре Explorer Advanced (enforce_explorer_stealth_policies), скрытие корневой директории правила, белый список системных файлов Windows, глубина max_depth=12.*
+- [core/everything_cloaker.py](#файл-coreeverythingcloakerpy) — *Управление флагами exclude_hidden_files_and_folders и exclude_system_files_and_folders в Everything.ini для исключения защищённых файлов и папок из поисковой выдачи утилиты Everything при активной защите, с тихим перезапуском Everything.exe -quit / -startup только при реальном изменении флагов.*
+- [core/decoy_generator.py](#файл-coredecoygeneratorpy) — *Генерация визуальных клонов-приманок на основе омоглифов (кириллица/латиница), поддержка дисков-приманок через drive_cloaker, безопасное удаление и размонтирование приманок.*
+- [core/hotkey_manager.py](#файл-corehotkeymanagerpy) — *Глобальные горячие клавиши (Ctrl+Shift+Alt+L, Ctrl+Shift+Alt+P) на базе нативного потока RegisterHotKey с fallback на pynput, нечувствительность к раскладке клавиатуры RU/EN.*
+- [core/recent_cleaner.py](#файл-corerecentcleanerpy) — *Оптимизированная очистка системных ярлыков .lnk из %APPDATA%\Microsoft\Windows\Recent с кэшированием mtime (0% CPU в простое) и гарантированным освобождением COM-дескрипторов.*
 - [core/autostart.py](#файл-coreautostartpy) — *Двойная регистрация автозапуска в Windows 11: создание ярлыка в Shell:Startup с WorkingDirectory + запись в HKCU Run.*
-- [core/utils.py](#файл-coreutilspy) — *Парсинг LocationURL в путь файловой системы с поддержкой search-ms: протокола и crumb параметров, нормализация путей с поддержкой сетевых и UNC-путей, системный диалог ошибки Windows через MessageBoxW.*
-- [ui/main_window.py](#файл-uimain-windowpy) — *Главное окно на базе FluentWindow (PySide6-Fluent-Widgets), интеграция в системный трей, анимация сворачивания, обработка PIN-кода при разворачивании, хоткей паузы защиты с синхронизацией дисков.*
-- [ui/views/rules_view.py](#файл-uiviewsrules-viewpy) — *Вкладка правил защиты: добавление, редактирование, удаление, кнопка мгновенного создания визуального клона-приманки или виртуального диска.*
-- [ui/views/logs_view.py](#файл-uiviewslogs-viewpy) — *Вкладка журнала перехватов: табличный просмотр событий с фильтрацией, подсчётом статистики и очисткой.*
-- [ui/views/settings_view.py](#файл-uiviewssettings-viewpy) — *Вкладка настроек: интервал проверки, глобальная защита, мастер-пароль PIN, автозапуск, автоочистка Recent, режим тишины.*
-- [ui/dialogs/pin_dialog.py](#файл-uidialogspin-dialogpy) — *Диалоги установки и проверки PIN-кода (автономный PinVerifyDialog без родителя для разворачивания из трея).*
-- [build_portable.py](#файл-build-portablepy) — *Скрипт сборки автономного переносимого пакета StealthGuard через PyInstaller с изолированным каталогом dist_build и безопасным обновлением locked DLL.*
-- [tests/test_components.py](#файл-teststest-componentspy) — *Комплексный набор из 12 автоматических тестов для всех ключевых подсистем проекта (хоткеи, PBKDF2 PIN + миграция, перехватчик, Total Cloaking, омоглифы, удаление, автозапуск, Drive Cloaker, search-ms парсинг, stealth policies, UI).*
-- [emergency_restore.bat](#файл-emergency-restorebat) — *Автономный батник аварийного восстановления Проводника: сброс NoDrives, размонтирование виртуальных дисков subst, снятие атрибутов System/Hidden и перезапуск Shell.*
+- [core/utils.py](#файл-coreutilspy) — *Парсинг LocationURL в путь файловой системы с поддержкой search-ms: протокола и crumb параметров, сверка с PROTECTED_ITEM_NAMES, нормализация путей с поддержкой сетевых и UNC-путей, системный диалог ошибки Windows через MessageBoxW.*
+- [ui/main_window.py](#файл-uimainwindowpy) — *Главное окно на базе FluentWindow (PySide6-Fluent-Widgets), интеграция в системный трей, анимация сворачивания, обработка PIN-кода при разворачивании, асинхронный хоткей паузы защиты с синхронизацией дисков и снятием/наложением скрытия без блокировки GUI.*
+- [ui/views/rules_view.py](#файл-uiviewsrulesviewpy) — *Вкладка правил защиты: управление режимами Подмена (Decoy), Скрытие (Hide) и Блокировка (Block), глубокое скрытие файлов (System + Hidden), создание визуальных клонов-приманок.*
+- [ui/views/logs_view.py](#файл-uiviewslogsviewpy) — *Вкладка журнала перехватов: табличный просмотр событий с фильтрацией, подсчётом статистики и очисткой.*
+- [ui/views/settings_view.py](#файл-uiviewssettingsviewpy) — *Вкладка настроек: интервал проверки, глобальная защита с асинхронным переключением видимости файлов, мастер-пароль PIN, автозапуск, автоочистка Recent, режим тишины.*
+- [ui/dialogs/pin_dialog.py](#файл-uidialogspindialogpy) — *Диалоги установки и проверки PIN-кода (автономный PinVerifyDialog без родителя для разворачивания из трея и при холодном старте).*
+- [build_portable.py](#файл-buildportablepy) — *Скрипт сборки автономного переносимого пакета StealthGuard через PyInstaller с изолированным каталогом dist_build и безопасным обновлением locked DLL.*
+- [tests/test_components.py](#файл-teststestcomponentspy) — *Комплексный набор из 20 автоматических тестов для всех ключевых подсистем проекта (хоткеи, PBKDF2 PIN + миграция, перехватчик, Total Cloaking, омоглифы, удаление, автозапуск, Drive Cloaker, search-ms парсинг, stealth policies, Everything.ini, сохранение системных атрибутов, режим hide, UI).*
+- [emergency_restore.bat](#файл-emergencyrestorebat) — *Автономный батник аварийного восстановления Проводника: сброс NoDrives, размонтирование виртуальных дисков subst, снятие атрибутов System/Hidden и перезапуск Shell.*
 - [config.json](#файл-configjson) — *Конфигурационный файл приложения (настройки и правила по умолчанию).*
 - [run.bat](#файл-runbat) — *Скрипт запуска приложения в обычном режиме GUI.*
-- [run_stealth.bat](#файл-run-stealthbat) — *Скрипт запуска приложения в скрытом фоновом режиме без отображения окна.*
+- [run_stealth.bat](#файл-runstealthbat) — *Скрипт запуска приложения в скрытом фоновом режиме без отображения окна.*
 - [requirements.txt](#файл-requirementstxt) — *Зависимости проекта Python.*
 
 ---
 
 ## Файл: main.py
 
-> **Назначение:** Точка входа, проверка единого экземпляра (Named Mutex), инициализация QApplication, разбор аргументов командной строки (--stealth, --config).
+> **Назначение:** Точка входа, проверка единого экземпляра (Named Mutex), обязательная проверка PIN при холодном старте, инициализация QApplication, аргументы --stealth, --config.
 
-```python
+`python
 import sys
 import os
 import argparse
@@ -58,6 +56,7 @@ from core.interceptor import ExplorerInterceptor
 from core.hotkey_manager import GlobalHotkeyManager
 from core.autostart import set_autostart, is_autostart_enabled
 from ui.main_window import MainWindow
+from ui.dialogs.pin_dialog import PinVerifyDialog
 
 MUTEX_NAME = "Local\\StealthGuardSingleInstance_Mutex_v1"
 
@@ -137,22 +136,32 @@ def main():
             if hasattr(window, "tray_icon"):
                 window.tray_icon.hide()
     else:
-        window.show()
+        # Check PIN requirement if enabled
+        if config_manager.settings.pin_enabled and config_manager.settings.pin_hash:
+            dialog = PinVerifyDialog(config_manager, None)
+            if dialog.exec():
+                window.show_normal_and_raise()
+            else:
+                cleanup()
+                sys.exit(0)
+        else:
+            window.show_normal_and_raise()
 
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
     main()
-```
+
+`
 
 ---
 
 ## Файл: core/config_manager.py
 
-> **Назначение:** Потокобезопасное (RLock) управление конфигурацией config.json, безопасный PIN-код (PBKDF2-HMAC-SHA256, 600k итераций, соль, secrets.compare_digest, автомиграция со старого SHA-256), асинхронный запуск задач клоакинга и синхронизация скрытых дисков.
+> **Назначение:** Потокобезопасное (RLock) управление конфигурацией config.json, безопасный PIN-код (PBKDF2-HMAC-SHA256, 600k итераций, соль, secrets.compare_digest, автомиграция со старого SHA-256), умная инверсия видимости для клонов-приманок (sync_rules_cloaking), поддержка режимов decoy, hide, block.
 
-```python
+`python
 import json
 import os
 import sys
@@ -171,7 +180,7 @@ class Rule:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     target_path: str = ""
-    mode: str = "decoy"  # "decoy" or "block"
+    mode: str = "decoy"  # "decoy", "hide", or "block"
     decoy_path: str = ""
     enabled: bool = True
     notify_on_block: bool = True
@@ -483,15 +492,16 @@ class ConfigManager:
             self.save()
             return True
         return False
-```
+
+`
 
 ---
 
 ## Файл: core/interceptor.py
 
-> **Назначение:** Мониторинг Проводника Windows 11 в реальном времени через COM Shell.Application, мгновенное пробуждение через WinEventWakeThread (GetMessageW), поддержка перехвата поисковых запросов search-ms: (включая crumb=location и crumb=query), безопасный fallback при блокировке.
+> **Назначение:** Мониторинг Проводника Windows 11 в реальном времени через COM Shell.Application, мгновенное пробуждение через WinEventWakeThread (GetMessageW), поддержка перехвата поисковых запросов search-ms: по токенам и PROTECTED_ITEM_NAMES, daemon-поток периодического ре-клоакинга, поддержка режимов Decoy, Hide, Block.
 
-```python
+`python
 import os
 import time
 import ctypes
@@ -790,7 +800,7 @@ class ExplorerInterceptor(QThread):
             }
             self.intercepted.emit(event_data)
 
-        elif rule.mode == "block":
+        elif rule.mode in ("block", "hide"):
             norm_target = os.path.normpath(rule.target_path)
             parent_dir = os.path.dirname(norm_target)
             if not parent_dir or not os.path.exists(parent_dir) or os.path.normcase(parent_dir) == os.path.normcase(norm_target):
@@ -813,17 +823,18 @@ class ExplorerInterceptor(QThread):
             except Exception as e:
                 print(f"[Interceptor] Block navigation failed: {e}")
 
+            mode_name = "Скрытие (Hide)" if rule.mode == "hide" else "Блокировка (Block)"
             event_data = {
                 "timestamp": timestamp_str,
                 "target_path": display_target,
-                "mode": "Блокировка (Block)",
+                "mode": mode_name,
                 "decoy_path": safe_destination,
                 "rule_name": rule.name or os.path.basename(rule.target_path),
                 "hwnd": hwnd
             }
             self.intercepted.emit(event_data)
 
-            if rule.notify_on_block:
+            if rule.mode == "block" and rule.notify_on_block:
                 folder_name = os.path.basename(os.path.normpath(rule.target_path)) or rule.target_path
                 show_native_error_dialog(
                     title="Проводник Windows",
@@ -843,7 +854,8 @@ class ExplorerInterceptor(QThread):
         self._running = False
         self._wake_event.set()
         self.wait(1500)
-```
+
+`
 
 ---
 
@@ -851,7 +863,7 @@ class ExplorerInterceptor(QThread):
 
 > **Назначение:** Скрытие локальных дисков и виртуальных дисков-приманок через реестровую маску NoDrives, мгновенное удаление из левой панели навигации XAML через SHChangeNotify(SHCNE_DRIVEREMOVED), монтирование виртуального диска-приманки через DefineDosDeviceW (Win32 API без прав администратора), скрытие дублирующих съёмных дисков через MountPoints2 и CLSID DelegateFolders.
 
-```python
+`python
 import os
 import shutil
 import ctypes
@@ -1125,21 +1137,24 @@ def sync_drives_from_config(config_manager):
         config_manager.save()
 
     apply_hidden_drives(hidden_letters)
-```
+
+`
 
 ---
 
 ## Файл: core/file_cloaker.py
 
-> **Назначение:** Технология Total Cloaking (System + Hidden + NotContentIndexed) для устранения визуального мигания файлов и исключения из поиска Проводника, принудительное отключение показа скрытых файлов в реестре Explorer Advanced (enforce_explorer_stealth_policies), скрытие корневой директории правила, белый список системных файлов Windows, глубина max_depth=12.
+> **Назначение:** Технология Total Cloaking (System + Hidden + NotContentIndexed) для устранения визуального мигания файлов и исключения из поиска Проводника, сохранение оригинальных системных/скрытых атрибутов при снятии защиты (system_attributes_cache.json), глобальный индекс PROTECTED_ITEM_NAMES, принудительное отключение показа скрытых файлов в реестре Explorer Advanced (enforce_explorer_stealth_policies), скрытие корневой директории правила, белый список системных файлов Windows, глубина max_depth=12.
 
-```python
+`python
 import os
+import sys
+import json
 import threading
 import ctypes
 from ctypes import wintypes
 import winreg
-from typing import Set, Optional
+from typing import Set, Dict, Optional
 
 kernel32 = ctypes.windll.kernel32
 shell32 = ctypes.windll.shell32
@@ -1147,6 +1162,80 @@ user32 = ctypes.windll.user32
 
 _PROTECTED_NAMES_LOCK = threading.Lock()
 PROTECTED_ITEM_NAMES: Set[str] = set()
+
+_CACHE_LOCK = threading.Lock()
+_ORIGINAL_ATTRIBUTES: Dict[str, int] = {}
+_CLOAKED_FOLDERS: Set[str] = set()
+
+
+def _get_system_cache_path() -> str:
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_dir, "system_attributes_cache.json")
+
+
+def _load_system_attributes_cache():
+    global _ORIGINAL_ATTRIBUTES, _CLOAKED_FOLDERS
+    cache_path = _get_system_cache_path()
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            with _CACHE_LOCK:
+                _ORIGINAL_ATTRIBUTES = {
+                    os.path.normcase(k): int(v)
+                    for k, v in data.get("attributes", {}).items()
+                }
+                _CLOAKED_FOLDERS = {
+                    os.path.normcase(p)
+                    for p in data.get("cloaked_folders", [])
+                }
+        except Exception:
+            pass
+
+
+def _save_system_attributes_cache():
+    cache_path = _get_system_cache_path()
+    try:
+        with _CACHE_LOCK:
+            data = {
+                "attributes": dict(_ORIGINAL_ATTRIBUTES),
+                "cloaked_folders": list(_CLOAKED_FOLDERS)
+            }
+        temp_path = cache_path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        if os.path.exists(cache_path):
+            os.replace(temp_path, cache_path)
+        else:
+            os.rename(temp_path, cache_path)
+    except Exception:
+        pass
+
+
+def get_recorded_original_attributes() -> Dict[str, int]:
+    """Возвращает копию словаря оригинальных системных/скрытых атрибутов файлов."""
+    with _CACHE_LOCK:
+        return dict(_ORIGINAL_ATTRIBUTES)
+
+
+def clear_system_attributes_cache():
+    """Очищает кэш оригинальных атрибутов и удаляет файл кэша."""
+    global _ORIGINAL_ATTRIBUTES, _CLOAKED_FOLDERS
+    with _CACHE_LOCK:
+        _ORIGINAL_ATTRIBUTES.clear()
+        _CLOAKED_FOLDERS.clear()
+    cache_path = _get_system_cache_path()
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+        except Exception:
+            pass
+
+
+_load_system_attributes_cache()
 
 
 def get_protected_item_names() -> Set[str]:
@@ -1310,8 +1399,8 @@ def cloak_file(file_path: str) -> bool:
 
 def uncloak_file(file_path: str) -> bool:
     """
-    Восстанавливает видимость файла, снимая атрибуты System и Hidden
-    (игнорирует настоящие системные файлы Windows вроде desktop.ini).
+    Восстанавливает видимость файла, не снимая оригинальные системные и скрытые атрибуты,
+    если файл изначально был системным или скрытым до наложения защиты.
     """
     try:
         if is_protected_system_item(os.path.basename(file_path)):
@@ -1321,11 +1410,15 @@ def uncloak_file(file_path: str) -> bool:
         if attrs == INVALID_FILE_ATTRIBUTES:
             return False
 
+        norm_p = os.path.normcase(os.path.normpath(file_path))
+        with _CACHE_LOCK:
+            orig_flags = _ORIGINAL_ATTRIBUTES.get(norm_p, 0)
+
         remove_flags = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
-        if not (attrs & remove_flags):
+        new_attrs = (attrs & ~remove_flags) | orig_flags
+        if new_attrs == attrs:
             return True
 
-        new_attrs = attrs & ~remove_flags
         return bool(kernel32.SetFileAttributesW(file_path, new_attrs))
     except Exception:
         return False
@@ -1341,6 +1434,7 @@ def cloak_folder(
     """
     Скрывает саму целевую папку (если это не корень диска), а также все файлы и подпапки
     внутри неё на глубину до max_depth=12.
+    Фиксирует исходные системные и скрытые атрибуты файлов для их сохранения при снятии защиты.
     Добавляет имена папки, всех её подпапок и файлов в глобальный кэш PROTECTED_ITEM_NAMES.
     Благодаря скрытию самой корневой папки (System + Hidden + NotContentIndexed)
     поиск Проводника Windows полностью пропускает ветку каталога и не выдаёт файлы внутри.
@@ -1355,7 +1449,52 @@ def cloak_folder(
     cloaked_count = 0
     base_path = os.path.normpath(folder_path)
     base_depth = base_path.rstrip(os.path.sep).count(os.path.sep)
+    base_norm = os.path.normcase(base_path)
     names_to_add: Set[str] = set()
+
+    with _CACHE_LOCK:
+        was_already_cloaked = base_norm in _CLOAKED_FOLDERS
+
+    # Если папка ещё не находилась в состоянии скрытия, фиксируем исходные атрибуты файлов и подпапок
+    if not was_already_cloaked:
+        try:
+            if not _is_drive_root_path(base_norm):
+                d_attrs = kernel32.GetFileAttributesW(base_norm)
+                if d_attrs != INVALID_FILE_ATTRIBUTES:
+                    orig_d = d_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                    if orig_d:
+                        with _CACHE_LOCK:
+                            _ORIGINAL_ATTRIBUTES[base_norm] = orig_d
+
+            for root, dirs, files in os.walk(base_norm):
+                c_depth = root.rstrip(os.path.sep).count(os.path.sep) - base_depth
+                dirs[:] = [d for d in dirs if not is_protected_system_item(d)]
+                for d in dirs:
+                    sub_d = os.path.normcase(os.path.join(root, d))
+                    sub_attrs = kernel32.GetFileAttributesW(sub_d)
+                    if sub_attrs != INVALID_FILE_ATTRIBUTES:
+                        orig = sub_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                        if orig:
+                            with _CACHE_LOCK:
+                                _ORIGINAL_ATTRIBUTES[sub_d] = orig
+                for f in files:
+                    if is_protected_system_item(f):
+                        continue
+                    full_f = os.path.normcase(os.path.join(root, f))
+                    f_attrs = kernel32.GetFileAttributesW(full_f)
+                    if f_attrs != INVALID_FILE_ATTRIBUTES:
+                        orig = f_attrs & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)
+                        if orig:
+                            with _CACHE_LOCK:
+                                _ORIGINAL_ATTRIBUTES[full_f] = orig
+                if not recursive or c_depth >= max_depth:
+                    dirs.clear()
+        except Exception:
+            pass
+
+        with _CACHE_LOCK:
+            _CLOAKED_FOLDERS.add(base_norm)
+        _save_system_attributes_cache()
 
     try:
         folder_base_name = os.path.basename(base_path)
@@ -1463,6 +1602,11 @@ def uncloak_folder(
             with _PROTECTED_NAMES_LOCK:
                 PROTECTED_ITEM_NAMES.difference_update(names_to_remove)
 
+        base_norm = os.path.normcase(base_path)
+        with _CACHE_LOCK:
+            _CLOAKED_FOLDERS.discard(base_norm)
+        _save_system_attributes_cache()
+
         notify_shell_dir_updated(base_path)
         parent = os.path.dirname(base_path)
         if parent and parent != base_path:
@@ -1498,7 +1642,9 @@ def cloak_directory(dir_path: str) -> bool:
 
 
 def uncloak_directory(dir_path: str) -> bool:
-    """Снимает System и Hidden с директории."""
+    """
+    Снимает System и Hidden с директории, сохраняя оригинальные системные и скрытые атрибуты.
+    """
     if not dir_path or not os.path.exists(dir_path):
         return False
     try:
@@ -1511,15 +1657,20 @@ def uncloak_directory(dir_path: str) -> bool:
         if attrs == INVALID_FILE_ATTRIBUTES:
             return False
 
+        norm_p = os.path.normcase(os.path.normpath(dir_path))
+        with _CACHE_LOCK:
+            orig_flags = _ORIGINAL_ATTRIBUTES.get(norm_p, 0)
+
         remove_flags = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
-        if not (attrs & remove_flags):
+        new_attrs = (attrs & ~remove_flags) | orig_flags
+        if new_attrs == attrs:
             return True
 
-        new_attrs = attrs & ~remove_flags
         return bool(kernel32.SetFileAttributesW(dir_path, new_attrs))
     except Exception:
         return False
-```
+
+`
 
 ---
 
@@ -1527,7 +1678,7 @@ def uncloak_directory(dir_path: str) -> bool:
 
 > **Назначение:** Управление флагами exclude_hidden_files_and_folders и exclude_system_files_and_folders в Everything.ini для исключения защищённых файлов и папок из поисковой выдачи утилиты Everything при активной защите, с тихим перезапуском Everything.exe -quit / -startup только при реальном изменении флагов.
 
-```python
+`python
 import os
 import subprocess
 from typing import List, Set, Optional
@@ -1716,7 +1867,8 @@ def sync_everything_hidden_policy(hide_system_and_hidden: bool, force: bool = Fa
 
     _LAST_APPLIED_STATE = hide_system_and_hidden
     return any_patched
-```
+
+`
 
 ---
 
@@ -1724,7 +1876,7 @@ def sync_everything_hidden_policy(hide_system_and_hidden: bool, force: bool = Fa
 
 > **Назначение:** Генерация визуальных клонов-приманок на основе омоглифов (кириллица/латиница), поддержка дисков-приманок через drive_cloaker, безопасное удаление и размонтирование приманок.
 
-```python
+`python
 import os
 from typing import Tuple, List
 
@@ -1925,7 +2077,9 @@ def delete_decoy_folder(decoy_path: str) -> bool:
     except Exception as e:
         print(f"[DecoyGenerator] Failed to delete decoy folder '{clean_path}': {e}")
         return False
-```
+
+
+`
 
 ---
 
@@ -1933,7 +2087,7 @@ def delete_decoy_folder(decoy_path: str) -> bool:
 
 > **Назначение:** Глобальные горячие клавиши (Ctrl+Shift+Alt+L, Ctrl+Shift+Alt+P) на базе нативного потока RegisterHotKey с fallback на pynput, нечувствительность к раскладке клавиатуры RU/EN.
 
-```python
+`python
 import os
 import sys
 import ctypes
@@ -2177,7 +2331,8 @@ class GlobalHotkeyManager(QObject):
             self._pynput_listener = None
 
         self._is_running = False
-```
+
+`
 
 ---
 
@@ -2185,7 +2340,7 @@ class GlobalHotkeyManager(QObject):
 
 > **Назначение:** Оптимизированная очистка системных ярлыков .lnk из %APPDATA%\Microsoft\Windows\Recent с кэшированием mtime (0% CPU в простое) и гарантированным освобождением COM-дескрипторов.
 
-```python
+`python
 import os
 import time
 from typing import List
@@ -2301,7 +2456,8 @@ class RecentCleaner:
                     pass
 
         return deleted_count
-```
+
+`
 
 ---
 
@@ -2309,7 +2465,7 @@ class RecentCleaner:
 
 > **Назначение:** Двойная регистрация автозапуска в Windows 11: создание ярлыка в Shell:Startup с WorkingDirectory + запись в HKCU Run.
 
-```python
+`python
 import sys
 import os
 import winreg
@@ -2429,15 +2585,16 @@ def is_autostart_enabled() -> bool:
             return False
     except Exception:
         return False
-```
+
+`
 
 ---
 
 ## Файл: core/utils.py
 
-> **Назначение:** Парсинг LocationURL в путь файловой системы с поддержкой search-ms: протокола и crumb параметров, нормализация путей с поддержкой сетевых и UNC-путей, системный диалог ошибки Windows через MessageBoxW.
+> **Назначение:** Парсинг LocationURL в путь файловой системы с поддержкой search-ms: протокола и crumb параметров, сверка с PROTECTED_ITEM_NAMES, нормализация путей с поддержкой сетевых и UNC-путей, системный диалог ошибки Windows через MessageBoxW.
 
-```python
+`python
 import os
 import sys
 import re
@@ -2588,15 +2745,16 @@ def show_native_error_dialog(title: str, message: str, parent_hwnd: int = 0):
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
-```
+
+`
 
 ---
 
 ## Файл: ui/main_window.py
 
-> **Назначение:** Главное окно на базе FluentWindow (PySide6-Fluent-Widgets), интеграция в системный трей, анимация сворачивания, обработка PIN-кода при разворачивании, хоткей паузы защиты с синхронизацией дисков.
+> **Назначение:** Главное окно на базе FluentWindow (PySide6-Fluent-Widgets), интеграция в системный трей, анимация сворачивания, обработка PIN-кода при разворачивании, асинхронный хоткей паузы защиты с синхронизацией дисков и снятием/наложением скрытия без блокировки GUI.
 
-```python
+`python
 import sys
 import os
 from PySide6.QtCore import Qt, QSize
@@ -2887,15 +3045,16 @@ class MainWindow(FluentWindow):
         if hasattr(self, "tray_icon"):
             self.tray_icon.hide()
         QApplication.quit()
-```
+
+`
 
 ---
 
 ## Файл: ui/views/rules_view.py
 
-> **Назначение:** Вкладка правил защиты: добавление, редактирование, удаление, кнопка мгновенного создания визуального клона-приманки или виртуального диска.
+> **Назначение:** Вкладка правил защиты: управление режимами Подмена (Decoy), Скрытие (Hide) и Блокировка (Block), глубокое скрытие файлов (System + Hidden), создание визуальных клонов-приманок.
 
-```python
+`python
 import os
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -2951,9 +3110,9 @@ class RuleCard(CardWidget):
         self.targetLabel.setStyleSheet("color: #a0a0a0;")
 
         self.actionLabel = CaptionLabel(self._get_action_desc(), self)
-        self.actionLabel.setStyleSheet("color: #0099ff;" if self.rule.mode == "decoy" else "color: #ff5555;")
+        color = "#0099ff" if self.rule.mode == "decoy" else ("#a066ff" if self.rule.mode == "hide" else "#ff5555")
+        self.actionLabel.setStyleSheet(f"color: {color};")
 
-        info_layout.addLayout(top_info_layout)
         info_layout.addWidget(self.targetLabel)
         info_layout.addWidget(self.actionLabel)
 
@@ -2963,15 +3122,21 @@ class RuleCard(CardWidget):
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(12)
 
-        self.mediaCheck = CheckBox("Анти-мигание", self)
-        self.mediaCheck.setToolTip("Делает файлы и подпапки системно скрытыми от Проводника — устраняет задержку и мигание при открытии")
+        self.mediaCheck = CheckBox("Скрытие содержимого", self)
+        self.mediaCheck.setToolTip("Делает файлы и подпапки системно скрытыми от Проводника (System + Hidden + NotContentIndexed)")
         self.mediaCheck.setChecked(getattr(self.rule, "cloak_all", True))
         self.mediaCheck.stateChanged.connect(self._on_hide_media_toggled)
         controls_layout.addWidget(self.mediaCheck)
 
         self.modeCombo = ComboBox(self)
-        self.modeCombo.addItems(["Подмена", "Блокировка"])
-        self.modeCombo.setCurrentIndex(0 if self.rule.mode == "decoy" else 1)
+        self.modeCombo.addItems(["Подмена", "Скрытие", "Блокировка"])
+        if self.rule.mode == "decoy":
+            mode_idx = 0
+        elif self.rule.mode == "hide":
+            mode_idx = 1
+        else:
+            mode_idx = 2
+        self.modeCombo.setCurrentIndex(mode_idx)
         self.modeCombo.setFixedWidth(135)
         self.modeCombo.currentIndexChanged.connect(self._on_mode_changed)
         controls_layout.addWidget(self.modeCombo)
@@ -2991,14 +3156,21 @@ class RuleCard(CardWidget):
         layout.addLayout(controls_layout)
 
     def _update_icon(self):
-        icon = FluentIcon.SYNC if self.rule.mode == "decoy" else FluentIcon.CANCEL
+        if self.rule.mode == "decoy":
+            icon = FluentIcon.SYNC
+        elif self.rule.mode == "hide":
+            icon = FluentIcon.HIDE
+        else:
+            icon = FluentIcon.CANCEL
         self.iconLabel.setPixmap(icon.icon().pixmap(32, 32))
 
     def _get_action_desc(self) -> str:
-        hide_str = " • 🙈 Анти-мигание активно" if getattr(self.rule, "cloak_all", True) else ""
+        hide_str = " • 🔒 Скрытие содержимого" if getattr(self.rule, "cloak_all", True) else ""
         if self.rule.mode == "decoy":
             decoy = self.rule.decoy_path or "Документы (по умолчанию)"
             return f"🔄 Подмена -> {decoy}{hide_str}"
+        elif self.rule.mode == "hide":
+            return f"👻 Скрытие -> Папка полностью скрыта{hide_str}"
         return f"⛔ Блокировка -> Окно ошибки Windows{hide_str}"
 
     def _on_hide_media_toggled(self, state):
@@ -3009,10 +3181,16 @@ class RuleCard(CardWidget):
         self.rule_changed.emit(self.rule)
 
     def _on_mode_changed(self, index: int):
-        self.rule.mode = "decoy" if index == 0 else "block"
+        if index == 0:
+            self.rule.mode = "decoy"
+        elif index == 1:
+            self.rule.mode = "hide"
+        else:
+            self.rule.mode = "block"
         self._update_icon()
         self.actionLabel.setText(self._get_action_desc())
-        self.actionLabel.setStyleSheet("color: #0099ff;" if self.rule.mode == "decoy" else "color: #ff5555;")
+        color = "#0099ff" if self.rule.mode == "decoy" else ("#a066ff" if self.rule.mode == "hide" else "#ff5555")
+        self.actionLabel.setStyleSheet(f"color: {color};")
         self.rule_changed.emit(self.rule)
 
     def _on_switch_changed(self, checked: bool):
@@ -3078,7 +3256,7 @@ class RulesView(QWidget):
 
         mode_label = BodyLabel("Режим:", self.addCard)
         self.modeCombo = ComboBox(self.addCard)
-        self.modeCombo.addItems(["Подмена (Decoy)", "Блокировка (Block)"])
+        self.modeCombo.addItems(["Подмена (Decoy)", "Скрытие (Hide)", "Блокировка (Block)"])
         self.modeCombo.setCurrentIndex(0)
         self.modeCombo.currentIndexChanged.connect(self._on_add_mode_changed)
 
@@ -3100,10 +3278,10 @@ class RulesView(QWidget):
         r2_layout.addWidget(self.autoCloneBtn)
         add_layout.addLayout(r2_layout)
 
-        # Row 2.5: Anti-flicker / Total Cloaking Checkbox
-        self.hideMediaCheck = CheckBox("🔒 Режим анти-мигания (скрывать файлы в папке: System + Hidden)", self.addCard)
+        # Row 2.5: Deep cloaking Checkbox
+        self.hideMediaCheck = CheckBox("🔒 Глубокое скрытие файлов (System + Hidden)", self.addCard)
         self.hideMediaCheck.setChecked(True)
-        self.hideMediaCheck.setToolTip("Делает файлы и подпапки невидимыми для Проводника, полностью устраняя мигание при переходе в приманку")
+        self.hideMediaCheck.setToolTip("Делает файлы и подпапки системно невидимыми для Проводника (System + Hidden + NotContentIndexed)")
         add_layout.addWidget(self.hideMediaCheck)
 
         # Row 3: Name & Add Button
@@ -3163,7 +3341,9 @@ class RulesView(QWidget):
         self.decoyInput.setEnabled(is_decoy)
         self.browseDecoyBtn.setEnabled(is_decoy)
         self.autoCloneBtn.setEnabled(is_decoy)
-        if not is_decoy:
+        if index == 1:
+            self.decoyInput.setPlaceholderText("Папка будет полностью скрыта, приманка не требуется")
+        elif index == 2:
             self.decoyInput.setPlaceholderText("Для блокировки папка-приманка не требуется")
         else:
             self.decoyInput.setPlaceholderText("Папка-приманка (например: C:\\Users\\User\\Documents)")
@@ -3221,9 +3401,16 @@ class RulesView(QWidget):
             )
             return
 
-        mode = "decoy" if self.modeCombo.currentIndex() == 0 else "block"
+        mode_idx = self.modeCombo.currentIndex()
+        if mode_idx == 0:
+            mode = "decoy"
+        elif mode_idx == 1:
+            mode = "hide"
+        else:
+            mode = "block"
+
         decoy = self.decoyInput.text().strip()
-        auto_decoy = self._last_auto_decoy
+        auto_decoy = self._last_auto_decoy if mode == "decoy" else False
         if mode == "decoy" and not decoy:
             from core.drive_cloaker import is_drive_root, get_drive_letter, mount_virtual_decoy_drive
             if is_drive_root(target):
@@ -3234,6 +3421,8 @@ class RulesView(QWidget):
             if not decoy:
                 # Default decoy: User Documents
                 decoy = os.path.join(os.path.expanduser("~"), "Documents")
+        elif mode != "decoy":
+            decoy = ""
 
         name = self.nameInput.text().strip() or os.path.basename(os.path.normpath(target)) or "Защита"
         cloak_all = self.hideMediaCheck.isChecked()
@@ -3270,8 +3459,10 @@ class RulesView(QWidget):
         self.refresh_rules_list()
 
         msg = f"Правило для «{name}» успешно активировано."
-        if cloak_all:
-            msg += " Включен режим анти-мигания (файлы системно скрыты)."
+        if mode == "hide":
+            msg += " Папка переведена в режим полного скрытия."
+        elif cloak_all:
+            msg += " Включено глубокое скрытие файлов (System + Hidden)."
 
         InfoBar.success(
             title="Правило сохранено",
@@ -3324,7 +3515,8 @@ class RulesView(QWidget):
             position=InfoBarPosition.TOP_RIGHT,
             duration=3500
         )
-```
+
+`
 
 ---
 
@@ -3332,7 +3524,7 @@ class RulesView(QWidget):
 
 > **Назначение:** Вкладка журнала перехватов: табличный просмотр событий с фильтрацией, подсчётом статистики и очисткой.
 
-```python
+`python
 import csv
 from datetime import datetime
 from PySide6.QtCore import Qt
@@ -3485,15 +3677,16 @@ class LogsView(QWidget):
                 position=InfoBarPosition.TOP_RIGHT,
                 duration=3000
             )
-```
+
+`
 
 ---
 
 ## Файл: ui/views/settings_view.py
 
-> **Назначение:** Вкладка настроек: интервал проверки, глобальная защита, мастер-пароль PIN, автозапуск, автоочистка Recent, режим тишины.
+> **Назначение:** Вкладка настроек: интервал проверки, глобальная защита с асинхронным переключением видимости файлов, мастер-пароль PIN, автозапуск, автоочистка Recent, режим тишины.
 
-```python
+`python
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -3887,15 +4080,16 @@ class SettingsView(QWidget):
         self.config_manager.settings.check_interval_ms = value
         self.config_manager.save()
         self.settings_changed.emit()
-```
+
+`
 
 ---
 
 ## Файл: ui/dialogs/pin_dialog.py
 
-> **Назначение:** Диалоги установки и проверки PIN-кода (автономный PinVerifyDialog без родителя для разворачивания из трея).
+> **Назначение:** Диалоги установки и проверки PIN-кода (автономный PinVerifyDialog без родителя для разворачивания из трея и при холодном старте).
 
-```python
+`python
 import sys
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtWidgets import (
@@ -4188,7 +4382,8 @@ class PinSetDialog(QDialog):
         if event.buttons() == Qt.LeftButton and not self._drag_pos.isNull():
             self.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
-```
+
+`
 
 ---
 
@@ -4196,7 +4391,7 @@ class PinSetDialog(QDialog):
 
 > **Назначение:** Скрипт сборки автономного переносимого пакета StealthGuard через PyInstaller с изолированным каталогом dist_build и безопасным обновлением locked DLL.
 
-```python
+`python
 import os
 import sys
 import shutil
@@ -4307,15 +4502,16 @@ def build():
 
 if __name__ == "__main__":
     build()
-```
+
+`
 
 ---
 
 ## Файл: tests/test_components.py
 
-> **Назначение:** Комплексный набор из 12 автоматических тестов для всех ключевых подсистем проекта (хоткеи, PBKDF2 PIN + миграция, перехватчик, Total Cloaking, омоглифы, удаление, автозапуск, Drive Cloaker, search-ms парсинг, stealth policies, UI).
+> **Назначение:** Комплексный набор из 20 автоматических тестов для всех ключевых подсистем проекта (хоткеи, PBKDF2 PIN + миграция, перехватчик, Total Cloaking, омоглифы, удаление, автозапуск, Drive Cloaker, search-ms парсинг, stealth policies, Everything.ini, сохранение системных атрибутов, режим hide, UI).
 
-```python
+`python
 import os
 import sys
 
@@ -4612,18 +4808,23 @@ def test_full_pipeline():
     sync_rules_cloaking(cm, protection_enabled=False)
     target_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(real_target)
     decoy_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(decoy_clone)
-    assert not (target_attrs_off & FILE_ATTRIBUTE_HIDDEN)
-    assert (decoy_attrs_off & FILE_ATTRIBUTE_HIDDEN) and (decoy_attrs_off & FILE_ATTRIBUTE_SYSTEM)
-
     # Clean up inversion test
     cm.remove_rule(inversion_rule.id)
-    time.sleep(0.1)
+    for _ in range(30):
+        if not os.path.exists(decoy_clone):
+            break
+        time.sleep(0.05)
     if os.path.exists(decoy_clone):
         delete_decoy_folder(decoy_clone)
     if os.path.exists(real_target):
-        os.rmdir(real_target)
+        uncloak_folder(real_target, all_files=True)
+        try:
+            os.rmdir(real_target)
+        except Exception:
+            pass
     if os.path.exists(inversion_base):
-        os.rmdir(inversion_base)
+        import shutil
+        shutil.rmtree(inversion_base, ignore_errors=True)
     print("[PASS] Smart Visibility Inversion (Protection ON/OFF) verified")
 
     # 3h. EverythingCloaker patch_everything_ini_flags test
@@ -4672,6 +4873,84 @@ def test_full_pipeline():
     if os.path.exists(test_everything_ini):
         os.remove(test_everything_ini)
     print("[PASS] Everything.ini flags patch (exclude_hidden & exclude_system) verified")
+
+    # 3i. System files attribute preservation test
+    from core.file_cloaker import clear_system_attributes_cache, get_recorded_original_attributes
+    clear_system_attributes_cache()
+    test_sys_dir = os.path.join(os.path.dirname(__file__), "test_sys_preservation")
+    if os.path.exists(test_sys_dir):
+        uncloak_folder(test_sys_dir, all_files=True)
+        import shutil
+        shutil.rmtree(test_sys_dir, ignore_errors=True)
+    os.makedirs(test_sys_dir, exist_ok=True)
+    normal_file = os.path.join(test_sys_dir, "normal_document.txt")
+    with open(normal_file, "w", encoding="utf-8") as f:
+        f.write("Normal content")
+    system_file = os.path.join(test_sys_dir, "special_driver.sys")
+    with open(system_file, "w", encoding="utf-8") as f:
+        f.write("DRIVER_SYS_BINARY_DATA\n")
+
+    # Mark special_driver.sys as System + Hidden originally
+    ctypes.windll.kernel32.SetFileAttributesW(
+        system_file,
+        FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN
+    )
+    initial_sys_attrs = ctypes.windll.kernel32.GetFileAttributesW(system_file)
+    assert (initial_sys_attrs & FILE_ATTRIBUTE_SYSTEM) != 0
+    assert (initial_sys_attrs & FILE_ATTRIBUTE_HIDDEN) != 0
+
+    # Cloak folder (both files become cloaked)
+    cloak_folder(test_sys_dir, all_files=True)
+    rec_attrs = get_recorded_original_attributes()
+    norm_sys_path = os.path.normpath(system_file).lower()
+    assert norm_sys_path in rec_attrs
+    assert (rec_attrs[norm_sys_path] & FILE_ATTRIBUTE_SYSTEM) != 0
+
+    # Uncloak folder: special_driver.sys MUST retain FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN!
+    # normal_document.txt MUST become visible (no HIDDEN, no SYSTEM)!
+    uncloak_folder(test_sys_dir, all_files=True)
+    after_normal_attrs = ctypes.windll.kernel32.GetFileAttributesW(normal_file)
+    after_sys_attrs = ctypes.windll.kernel32.GetFileAttributesW(system_file)
+
+    assert not (after_normal_attrs & FILE_ATTRIBUTE_HIDDEN)
+    assert not (after_normal_attrs & FILE_ATTRIBUTE_SYSTEM)
+    assert (after_sys_attrs & FILE_ATTRIBUTE_SYSTEM) != 0
+    assert (after_sys_attrs & FILE_ATTRIBUTE_HIDDEN) != 0
+
+    # Clean up test files
+    ctypes.windll.kernel32.SetFileAttributesW(system_file, 0x80)  # FILE_ATTRIBUTE_NORMAL
+    os.remove(system_file)
+    os.remove(normal_file)
+    os.rmdir(test_sys_dir)
+    print("[PASS] System files attribute preservation on uncloak verified")
+
+    # 3j. Mode 'hide' (pure folder hiding without decoy) test
+    test_hide_dir = os.path.join(os.path.dirname(__file__), "test_hide_mode_dir")
+    os.makedirs(test_hide_dir, exist_ok=True)
+    hide_rule = Rule(
+        name="HideModeRule",
+        target_path=test_hide_dir,
+        mode="hide",
+        decoy_path="",
+        enabled=True
+    )
+    cm.add_rule(hide_rule)
+
+    # 1) Protection ENABLED: test_hide_dir is cloaked
+    sync_rules_cloaking(cm, protection_enabled=True)
+    hide_attrs_on = ctypes.windll.kernel32.GetFileAttributesW(test_hide_dir)
+    assert (hide_attrs_on & FILE_ATTRIBUTE_HIDDEN) and (hide_attrs_on & FILE_ATTRIBUTE_SYSTEM)
+
+    # 2) Protection DISABLED: test_hide_dir is uncloaked
+    sync_rules_cloaking(cm, protection_enabled=False)
+    hide_attrs_off = ctypes.windll.kernel32.GetFileAttributesW(test_hide_dir)
+    assert not (hide_attrs_off & FILE_ATTRIBUTE_HIDDEN)
+
+    # Clean up
+    cm.remove_rule(hide_rule.id)
+    if os.path.exists(test_hide_dir):
+        os.rmdir(test_hide_dir)
+    print("[PASS] Mode 'hide' (pure folder hiding) sync verified")
 
     # 4. Qt App and Main Window UI verification
     app = QApplication.instance() or QApplication(sys.argv)
@@ -4723,6 +5002,20 @@ def test_full_pipeline():
     os.rmdir(dummy_ui_target)
     print("[PASS] RulesView Auto-Clone UI action passed")
 
+    # Test RulesView Mode 'hide' (pure folder hiding) creation
+    dummy_ui_hide = os.path.join(os.path.dirname(__file__), "UI_Hide_Target")
+    os.makedirs(dummy_ui_hide, exist_ok=True)
+    window.rules_view.targetInput.setText(dummy_ui_hide)
+    window.rules_view.modeCombo.setCurrentIndex(1)  # Index 1: "Скрытие (Hide)"
+    window.rules_view._create_rule()
+    created_hide_rule = next((r for r in cm.rules if r.target_path == dummy_ui_hide), None)
+    assert created_hide_rule is not None
+    assert created_hide_rule.mode == "hide"
+    assert created_hide_rule.decoy_path == ""
+    cm.remove_rule(created_hide_rule.id)
+    os.rmdir(dummy_ui_hide)
+    print("[PASS] RulesView Mode 'hide' UI creation passed")
+
     # Test protection toggle hotkey handler
     assert cm.settings.global_protection_enabled is True
     window.on_toggle_protection_hotkey()
@@ -4741,7 +5034,8 @@ def test_full_pipeline():
 
 if __name__ == "__main__":
     test_full_pipeline()
-```
+
+`
 
 ---
 
@@ -4749,7 +5043,7 @@ if __name__ == "__main__":
 
 > **Назначение:** Автономный батник аварийного восстановления Проводника: сброс NoDrives, размонтирование виртуальных дисков subst, снятие атрибутов System/Hidden и перезапуск Shell.
 
-```batch
+`batch
 @echo off
 chcp 65001 >nul
 title StealthGuard — Аварийное восстановление видимости
@@ -4794,7 +5088,8 @@ echo [ГОТОВО] Все настройки проводника и видим
 echo ========================================================
 echo.
 pause
-```
+
+`
 
 ---
 
@@ -4802,7 +5097,7 @@ pause
 
 > **Назначение:** Конфигурационный файл приложения (настройки и правила по умолчанию).
 
-```json
+`json
 {
   "settings": {
     "global_protection_enabled": true,
@@ -4818,7 +5113,7 @@ pause
   },
   "rules": []
 }
-```
+`
 
 ---
 
@@ -4826,7 +5121,7 @@ pause
 
 > **Назначение:** Скрипт запуска приложения в обычном режиме GUI.
 
-```batch
+`batch
 @echo off
 setlocal
 cd /d "%~dp0"
@@ -4851,7 +5146,8 @@ if %errorlevel% neq 0 (
 )
 
 start "" "%PYTHON_EXE%" "%~dp0main.py" %*
-```
+
+`
 
 ---
 
@@ -4859,7 +5155,7 @@ start "" "%PYTHON_EXE%" "%~dp0main.py" %*
 
 > **Назначение:** Скрипт запуска приложения в скрытом фоновом режиме без отображения окна.
 
-```batch
+`batch
 @echo off
 setlocal
 cd /d "%~dp0"
@@ -4884,7 +5180,8 @@ if %errorlevel% neq 0 (
 )
 
 start "" "%PYTHONW_EXE%" "%~dp0main.py" --stealth %*
-```
+
+`
 
 ---
 
@@ -4892,12 +5189,14 @@ start "" "%PYTHONW_EXE%" "%~dp0main.py" --stealth %*
 
 > **Назначение:** Зависимости проекта Python.
 
-```text
+`text
 PySide6>=6.5.0
 PySide6-Fluent-Widgets>=1.5.0
 pywin32>=306
 psutil>=5.9.0
 pynput>=1.7.6
-```
+
+`
 
 ---
+

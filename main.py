@@ -20,6 +20,7 @@ from core.interceptor import ExplorerInterceptor
 from core.hotkey_manager import GlobalHotkeyManager
 from core.autostart import set_autostart, is_autostart_enabled
 from ui.main_window import MainWindow
+from ui.dialogs.pin_dialog import PinVerifyDialog
 
 MUTEX_NAME = "Local\\StealthGuardSingleInstance_Mutex_v1"
 
@@ -99,7 +100,16 @@ def main():
             if hasattr(window, "tray_icon"):
                 window.tray_icon.hide()
     else:
-        window.show()
+        # Check PIN requirement if enabled
+        if config_manager.settings.pin_enabled and config_manager.settings.pin_hash:
+            dialog = PinVerifyDialog(config_manager, None)
+            if dialog.exec():
+                window.show_normal_and_raise()
+            else:
+                cleanup()
+                sys.exit(0)
+        else:
+            window.show_normal_and_raise()
 
     sys.exit(app.exec())
 

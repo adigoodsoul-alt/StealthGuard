@@ -16,7 +16,7 @@ class Rule:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     target_path: str = ""
-    mode: str = "decoy"  # "decoy" or "block"
+    mode: str = "decoy"  # "decoy", "hide", or "block"
     decoy_path: str = ""
     enabled: bool = True
     notify_on_block: bool = True
