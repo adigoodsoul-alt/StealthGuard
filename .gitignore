@@ -9,6 +9,7 @@ dist/
 build/
 dist_build/
 *.spec
+*.zip
 
 # Test files & temporary caches
 pipeline_test_config.json
